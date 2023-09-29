@@ -14,40 +14,42 @@ func main() {
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer rabbitConn.Close()
 
-	// Declare Channel
+	// We want to talk to RabbitMQ, but we need a way to communicate with it.
 	ch, err := rabbitConn.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer ch.Close()
 
-	// Declare Queue
+	// We need a place to send our messages to RabbitMQ, like a mailbox.
 	q, err := ch.QueueDeclare(
-		"hello",	// name
-		false,		// durable
-		false,		// delete when unused
-		false,		// exclusive
-		false,		// no-wait
-		nil,		// arguments
+		"task_queue",	// name, This is the name of our mailbox.
+		true,		// durable, We want our mailbox to stay forever.
+		false,		// auto-delete, We don't want to delete the mailbox when it's not used.
+		false,		// exclusive, Our mailbox is not just for us, others can use it too.
+		false,		// no-wait, We don't want to wait when we send a message.
+		nil,		// args, No special settings for our mailbox.
 	)
 	failOnError(err, "Failed to declare a queue")
 
+	// Now, we want to send a message to our mailbox.
 	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
 	defer cancel()
 
-	body := "Hello World!"
+	body := "Do some important work!"	// This is our message.
 	err = ch.PublishWithContext(ctx,
-		"",		// exchange
-		q.Name,	// routing key
-		false,	// mandatory
-		false,	// immediate
+		"",		// exchange, We don't need to explain where to send the message, RabbitMQ knows.
+		q.Name,	// routing key, We send the message to our mailbox.
+		false,	// mandatory, Set to 'false' to avoid returning undeliverable messages
+		false,	// immediate, We don't need an immediate response.
 		amqp.Publishing{
-			ContentType: "text/plain",
-			Body: []byte(body),
+			ContentType: "text/plain",	// We tell RabbitMQ that our message is plain text.
+			Body: []byte(body),			// We put our "Hello World!" message here.
 		},
 	)
 	failOnError(err, "Failed to publish a message")
 	log.Printf(" [x] Sent %s\n", body)
 }
 
+// This function helps us connect to RabbitMQ.
 func connectToRabbitMQ() (*amqp.Connection, error) {
 	var counts float64
 	var backOff = 1 * time.Second
@@ -76,6 +78,7 @@ func connectToRabbitMQ() (*amqp.Connection, error) {
 	return connection, nil
 }
 
+// This function helps us handle errors.
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Panicf("%s: %s", msg, err)

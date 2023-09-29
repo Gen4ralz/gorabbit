@@ -20,8 +20,8 @@ func main() {
 
 	// Declare Queue
 	q, err := ch.QueueDeclare(
-		"hello",	// name
-		false,		// durable
+		"task_queue",	// name
+		true,		// durable, Make the queue durable to survive server restarts
 		false,		// delete when unused
 		false,		// exclusive
 		false,		// no-wait
@@ -29,26 +29,43 @@ func main() {
 	)
 	failOnError(err, "Failed to declare a queue")
 
+	// Implement Fair Dispatch
+	err = ch.Qos(
+		1,     // Per consumer limit
+		0,     // Per consumer global
+		false, // Apply to this channel only
+	)
+	failOnError(err, "Failed to set QoS")
+
+	// We're ready to receive messages from our mailbox. We sit and wait for messages to come.
 	msgs, err := ch.Consume(
-		q.Name,		// queue
-		"",			// consumer
-		true,		// auto-ack
-		false,		// exclusive
-		false,		// no-local
-		false,		// no-wait
-		nil,		// args
+		q.Name,		// queue, We tell RabbitMQ which mailbox to listen to.
+		"",			// consumer, We're just one of many listeners, so we don't need a special name.
+		false,		// auto-ack, We don't want to automatically acknowledge messages. --> change in tutorial 2
+		false,		// exclusive, We're not the only one who can listen to this mailbox.
+		false,		// no-local, We don't need to hear messages we sent ourselves.
+		false,		// no-wait, We don't want to wait, just listen for new messages.
+		nil,		// args, No special settings for listening.
 	)
 	failOnError(err, "Failed to register a consumer")
 
-	var forever chan struct{}
+	var forever chan struct{} // We create a special channel that will keep our program running forever.
 
 	go func() {
+		// Here, we have a little helper who listens for messages in the mailbox and tells us when they arrive.
 		for d := range msgs {
 			log.Printf("Received a message: %s", d.Body)
+			// Simulate task processing
+			time.Sleep(2 * time.Second)
+			log.Printf("Done: %s", d.Body)
+
+			// Acknowledge the message to remove it from the queue
+			d.Ack(false)
 		}
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	// We wait forever until someone stops our program (by pressing CTRL+C).
 	<-forever
 }
 
